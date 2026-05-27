@@ -1,3 +1,9 @@
+{# Index template — Part 2 update.
+   SECURE (V5): edit / delete icons are only rendered for the owner of
+                the photo or for admins. This is a UI defence; the
+                backend repeats the authorisation check on every request.
+   SECURE (V6 / CWE-352): delete is rendered as a POST form with a CSRF
+                          token, not as an <a href>. #}
 {% extends 'layouts/base.html' %}
 
 {% block heading %}
@@ -5,9 +11,9 @@
     <div class="cs-container">
         <span class="cs-int-title">Welcome to our Photo site! You can add your own content or browse our photos below.</span>
     </div>
-    <!--Background Image-->
     <picture class="cs-background">
-        <img src="{{ url_for('static', filename='img/welcome.jpg') }}" width="1280" height="128" title="Welcome" alt="welcome">
+        <img src="{{ url_for('static', filename='img/welcome.jpg') }}"
+             width="1280" height="128" title="Welcome" alt="welcome">
     </picture>
 </div>
 {% endblock heading %}
@@ -16,7 +22,11 @@
 
 <div id="filter" class="filter-container">
   <div id="upload">
-    <a href="{{ url_for('main.newPhoto') }}">Upload a photo</a>
+    {% if current_user.is_authenticated %}
+      <a href="{{ url_for('main.newPhoto') }}">Upload a photo</a>
+    {% else %}
+      <a href="{{ url_for('auth.login') }}">Log in to upload</a>
+    {% endif %}
   </div>
 </div>
 
@@ -41,23 +51,37 @@
             </div>
 
             <div class="image-navigation-container">
-                <a href="{{ url_for('main.display_file', name=photo.file) }}" class="download" title="Download this photo" download>
+                <a href="{{ url_for('main.display_file', name=photo.file) }}"
+                   class="download" title="Download this photo" download>
                     <div class="icon-container highlight blue">
                         <img src="{{ url_for('static', filename='icons/download.png') }}" alt="download">
                     </div>
                 </a>
 
-                <a href="{{ url_for('main.editPhoto', photo_id=photo.id) }}" title="Edit this photo">
-                    <div class="icon-container highlight green">
-                        <img src="{{ url_for('static', filename='icons/edit.png') }}" alt="edit">
-                    </div>
-                </a>
+                {# SECURE (V5): edit / delete buttons only for owner or admin. #}
+                {% if current_user.is_authenticated and (current_user.id == photo.owner_id or current_user.is_admin) %}
+                    <a href="{{ url_for('main.editPhoto', photo_id=photo.id) }}"
+                       title="Edit this photo">
+                        <div class="icon-container highlight green">
+                            <img src="{{ url_for('static', filename='icons/edit.png') }}" alt="edit">
+                        </div>
+                    </a>
 
-               <a href="{{ url_for('main.deletePhoto', photo_id=photo.id) }}" title="Delete this photo">
-                  <div class="icon-container highlight red delete">
-                      <img src="{{ url_for('static', filename='icons/delete.png') }}" title="Delete this photo" alt="delete">
-                  </div>
-              </a>
+                    {# SECURE (V6 / CWE-352): delete is POST + CSRF. #}
+                    <form method="POST"
+                          action="{{ url_for('main.deletePhoto', photo_id=photo.id) }}"
+                          style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit"
+                                style="background:none;border:none;padding:0;cursor:pointer;"
+                                title="Delete this photo">
+                            <div class="icon-container highlight red delete">
+                                <img src="{{ url_for('static', filename='icons/delete.png') }}"
+                                     title="Delete this photo" alt="delete">
+                            </div>
+                        </button>
+                    </form>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -65,4 +89,3 @@
 </div>
 
 {% endblock content %}
-~                          

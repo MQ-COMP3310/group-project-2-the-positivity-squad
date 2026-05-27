@@ -1,0 +1,29 @@
+{# Login template — Part 2 implementation.
+   SECURE (V7 / CWE-352): form.hidden_tag() emits the Flask-WTF CSRF token. #}
+{% extends 'layouts/base.html' %}
+
+{% block title %}Log in{% endblock title %}
+
+{% block heading %}Log in to Cloud Photos{% endblock heading %}
+
+{% block content %}
+<form method="POST" action="{{ url_for('auth.login') }}">
+    {{ form.hidden_tag() }}
+
+    <div class="input-container">
+        {{ form.email.label }}
+        {{ form.email(placeholder="you@example.com") }}
+        {% for e in form.email.errors %}<span class="error">{{ e }}</span>{% endfor %}
+    </div>
+    <div class="input-container">
+        {{ form.password.label }}
+        {{ form.password() }}
+        {% for e in form.password.errors %}<span class="error">{{ e }}</span>{% endfor %}
+    </div>
+
+    <div class="input-container button green">
+        {{ form.submit() }}
+        <a href="{{ url_for('auth.signup') }}">Don't have an account? Sign up</a>
+    </div>
+</form>
+{% endblock content %}

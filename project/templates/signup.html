@@ -1,0 +1,40 @@
+{# Signup template — Part 2 implementation.
+   SECURE (V7): CSRF token via form.hidden_tag().
+   SECURE (V16): server-side validation errors are rendered inline. #}
+{% extends 'layouts/base.html' %}
+
+{% block title %}Sign up{% endblock title %}
+
+{% block heading %}Create your account{% endblock heading %}
+
+{% block content %}
+<form method="POST" action="{{ url_for('auth.signup') }}">
+    {{ form.hidden_tag() }}
+
+    <div class="input-container">
+        {{ form.email.label }}
+        {{ form.email(placeholder="you@example.com") }}
+        {% for e in form.email.errors %}<span class="error">{{ e }}</span>{% endfor %}
+    </div>
+    <div class="input-container">
+        {{ form.username.label }}
+        {{ form.username() }}
+        {% for e in form.username.errors %}<span class="error">{{ e }}</span>{% endfor %}
+    </div>
+    <div class="input-container">
+        {{ form.password.label }}
+        {{ form.password() }}
+        {% for e in form.password.errors %}<span class="error">{{ e }}</span>{% endfor %}
+    </div>
+    <div class="input-container">
+        {{ form.confirm.label }}
+        {{ form.confirm() }}
+        {% for e in form.confirm.errors %}<span class="error">{{ e }}</span>{% endfor %}
+    </div>
+
+    <div class="input-container button green">
+        {{ form.submit() }}
+        <a href="{{ url_for('auth.login') }}">Already have an account? Log in</a>
+    </div>
+</form>
+{% endblock content %}

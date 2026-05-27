@@ -1,49 +1,41 @@
+{# Upload template — Part 2 update.
+   SECURE (V7 / CWE-352): form.hidden_tag() emits the CSRF token.
+   SECURE (V8): accept attribute is a UX hint only; the server enforces
+                MIME / magic-byte validation regardless.
+   SECURE (V16): inline validation errors are rendered next to each field. #}
 {% extends 'layouts/base.html' %}
 
-{% block title %}
-Upload a photo
-{% endblock title %}
+{% block title %}Upload a photo{% endblock title %}
 
-{% block heading %}
-Upload a photo
-{% endblock heading %}
+{% block heading %}Upload a photo{% endblock heading %}
 
 {% block content %}
 <form method="POST" enctype="multipart/form-data">
-    <div class="input-container button" title="File size should be under 1MB">
-        <!-- Currently accept all files. Should be image files only. -->
-        <input type="file" name="fileToUpload" accept="*/*">
-    </div>
+    {{ form.hidden_tag() }}
 
-    <div class="input-container">
-        <label for="user">User</label>
-        <input id="user" type="text" name="user"
-            placeholder="User"
-            title="Specify your user name"
-            required
-        >
+    <div class="input-container button" title="File size must be under 5MB">
+        {{ form.fileToUpload(accept="image/png,image/jpeg,image/webp") }}
+        {% for e in form.fileToUpload.errors %}<span class="error">{{ e }}</span>{% endfor %}
     </div>
     <div class="input-container">
-        <label for="caption">Caption</label>
-        <input id="caption" type="text" name="caption"
-            placeholder="Caption"
-            title="Provide a nice and short caption to your photo"
-            required
-        >
+        {{ form.user.label }}
+        {{ form.user(placeholder="User", title="Specify your user name") }}
+        {% for e in form.user.errors %}<span class="error">{{ e }}</span>{% endfor %}
     </div>
     <div class="input-container">
-        <label for="description">Description</label>
-        <textarea id="description" name="description" 
-            placeholder="Description"
-            rows=6 cols=25
-            title="Provide a nice and short description to your photo"
-            required></textarea>
+        {{ form.caption.label }}
+        {{ form.caption(placeholder="Caption", title="Provide a short caption") }}
+        {% for e in form.caption.errors %}<span class="error">{{ e }}</span>{% endfor %}
+    </div>
+    <div class="input-container">
+        {{ form.description.label }}
+        {{ form.description(rows=6, cols=25, placeholder="Description") }}
+        {% for e in form.description.errors %}<span class="error">{{ e }}</span>{% endfor %}
     </div>
 
     <div class="input-container button green">
-        <input type="submit" value="Upload">
+        {{ form.submit() }}
         <a href="{{ url_for('main.homepage') }}">Cancel</a>
     </div>
 </form>
 {% endblock content %}
-

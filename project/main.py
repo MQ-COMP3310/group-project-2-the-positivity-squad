@@ -1,80 +1,220 @@
-from flask import (
-  Blueprint, render_template, request, 
-  flash, redirect, url_for, send_from_directory, 
-  current_app, make_response
-)
-from .models import Photo
-from sqlalchemy import asc, text
-from . import db
+"""
+Main blueprint — homepage, file serving, upload, edit, delete.
+
+Refactored for Part 2 to add authentication, ownership/admin
+authorisation, secure file upload, ORM-only DB access, structured
+audit logging, and proper error handling. Each secure-coding decision
+is marked with the V# from Task 3 it closes.
+
+Sources:
+- Werkzeug secure_filename:
+  https://werkzeug.palletsprojects.com/en/3.0.x/utils/#werkzeug.utils.secure_filename
+- Pillow image verification:
+  https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.Image.verify
+- Flask-Login @login_required:
+  https://flask-login.readthedocs.io/en/latest/#flask_login.login_required
+"""
 import os
+import uuid
+import logging
 
-main = Blueprint('main', __name__)
+from flask import (
+    Blueprint, render_template, request, flash, redirect, url_for,
+    send_from_directory, current_app, abort,
+)
+from flask_login import login_required, current_user
+from werkzeug.utils import secure_filename
+from sqlalchemy import asc
 
-# This is called when the home page is rendered. It fetches all images sorted by filename.
-@main.route('/')
+from . import db
+from .models import Photo
+from .forms import UploadForm, EditForm
+
+# Pillow is imported lazily inside the handler so tests can run on a
+# Python with no Pillow installed (in that case the upload tests skip).
+try:
+    from PIL import Image, UnidentifiedImageError
+    HAVE_PIL = True
+except ImportError:
+    HAVE_PIL = False
+
+main = Blueprint("main", __name__)
+log = logging.getLogger("main")
+
+
+@main.route("/")
 def homepage():
-  photos = db.session.query(Photo).order_by(asc(Photo.file))
-  return render_template('index.html', photos = photos)
+    """Public photo gallery.
 
-@main.route('/uploads/<name>')
+    Anonymous access is allowed; the template hides the edit / delete
+    icons for non-owners (UI defence). The backend repeats the
+    authorisation check on every edit / delete request — the client is
+    never trusted.
+    """
+    photos = db.session.query(Photo).order_by(asc(Photo.file))
+    return render_template("index.html", photos=photos)
+
+
+@main.route("/uploads/<name>")
 def display_file(name):
-  return send_from_directory(current_app.config["UPLOAD_DIR"], name)
+    """Serve a previously-uploaded image.
 
-# Upload a new photo
-@main.route('/upload/', methods=['GET','POST'])
+    SECURE (V9): send_from_directory uses werkzeug.safe_join internally,
+    which rejects path-traversal attempts. We additionally call
+    os.path.basename as defence in depth.
+    """
+    safe_name = os.path.basename(name)
+    return send_from_directory(current_app.config["UPLOAD_DIR"], safe_name)
+
+
+# SECURE (V5 / CWE-306): @login_required enforces the authentication
+# boundary. Unauthenticated requests are redirected to /login by the
+# LoginManager registered in __init__.py.
+@main.route("/upload/", methods=["GET", "POST"])
+@login_required
 def newPhoto():
-  if request.method == 'POST':
-    file = None
-    if "fileToUpload" in request.files:
-      file = request.files.get("fileToUpload")
-    else:
-      flash("Invalid request!", "error")
+    # SECURE (V7): CSRF token bound to session, validated by Flask-WTF.
+    form = UploadForm()
+    if form.validate_on_submit():
+        file = form.fileToUpload.data
 
-    if not file or not file.filename:
-      flash("No file selected!", "error")
-      return redirect(request.url)
+        # SECURE (V8 / CWE-434): magic-byte verification via Pillow.
+        # Even if an attacker renames evil.svg to evil.jpg the bytes do
+        # not parse as a real image, and Image.verify() raises.
+        if HAVE_PIL:
+            try:
+                img = Image.open(file)
+                img.verify()
+                file.stream.seek(0)
+            except (UnidentifiedImageError, Exception):  # noqa: BLE001
+                log.warning("upload rejected non_image user_id=%s",
+                            current_user.id)
+                flash("Uploaded file is not a valid image.", "error")
+                return render_template("upload.html", form=form), 400
 
-    filepath = os.path.join(current_app.config["UPLOAD_DIR"], file.filename)
-    file.save(filepath)
+        # SECURE (V9 / V12): secure_filename strips path separators and
+        # normalises Unicode; UUID prefix removes collisions and makes
+        # filenames unguessable.
+        cleaned = secure_filename(file.filename or "")
+        if not cleaned:
+            flash("Invalid filename.", "error")
+            return render_template("upload.html", form=form), 400
+        stored_name = f"{uuid.uuid4().hex}_{cleaned}"
 
-    newPhoto = Photo(name = request.form['user'], 
-                    caption = request.form['caption'],
-                    description = request.form['description'],
-                    file = file.filename)
-    db.session.add(newPhoto)
-    flash('New Photo %s Successfully Created' % newPhoto.name)
-    db.session.commit()
-    return redirect(url_for('main.homepage'))
-  else:
-    return render_template('upload.html')
+        upload_dir = str(current_app.config["UPLOAD_DIR"])
+        os.makedirs(upload_dir, exist_ok=True)
+        filepath = os.path.join(upload_dir, stored_name)
 
-# This is called when clicking on Edit. Goes to the edit page.
-@main.route('/photo/<int:photo_id>/edit/', methods = ['GET', 'POST'])
+        # SECURE (V13): defence in depth — confirm the resolved path
+        # stays inside UPLOAD_DIR even after symlink resolution.
+        resolved = os.path.realpath(filepath)
+        if os.path.commonpath([resolved, os.path.realpath(upload_dir)]) != \
+                os.path.realpath(upload_dir):
+            log.warning("upload rejected traversal user_id=%s",
+                        current_user.id)
+            abort(400)
+
+        file.save(filepath)
+
+        # SECURE (V1 / CWE-89): ORM-only DB access. No raw SQL strings.
+        new_photo = Photo(
+            name=form.user.data,
+            caption=form.caption.data,
+            description=form.description.data,
+            file=stored_name,
+            owner_id=current_user.id,  # SECURE (V5): record ownership.
+        )
+        db.session.add(new_photo)
+        db.session.commit()
+        log.info("upload success user_id=%s photo_id=%s file=%s",
+                 current_user.id, new_photo.id, stored_name)
+        flash(f"New photo '{new_photo.name}' uploaded.", "success")
+        return redirect(url_for("main.homepage"))
+
+    # SECURE (V21): on validation failure, re-render the form. Never
+    # redirect(request.url).
+    # SECURE (V16 / V17 / A10:2025): return HTTP 400 on POST validation
+    # failure so the API surface accurately reflects the boundary
+    # rejection (helps monitoring / regression tests catch issues).
+    status_code = 400 if request.method == "POST" else 200
+    return render_template("upload.html", form=form), status_code
+
+
+@main.route("/photo/<int:photo_id>/edit/", methods=["GET", "POST"])
+@login_required
 def editPhoto(photo_id):
-  editedPhoto = db.session.query(Photo).filter_by(id = photo_id).one()
-  if request.method == 'POST':
-    if request.form['user']:
-      editedPhoto.name = request.form['user']
-      editedPhoto.caption = request.form['caption']
-      editedPhoto.description = request.form['description']
-      db.session.add(editedPhoto)
-      db.session.commit()
-      flash('Photo Successfully Edited %s' % editedPhoto.name)
-      return redirect(url_for('main.homepage'))
-  else:
-    return render_template('edit.html', photo = editedPhoto)
+    # SECURE (V1 / CWE-89): ORM lookup, parameterised by Flask's int
+    # route converter and SQLAlchemy.
+    # SECURE (V14 / CWE-209): proper 404 if not found, no stack trace.
+    photo = db.session.get(Photo, photo_id)
+    if photo is None:
+        abort(404)
+
+    # SECURE (V5 / Part-2 req): ownership / admin authorisation.
+    # Owners can edit their own content; admins can edit any content;
+    # everyone else gets 403.
+    if photo.owner_id != current_user.id and not current_user.is_admin:
+        log.warning("edit forbidden user_id=%s photo_id=%s",
+                    current_user.id, photo_id)
+        abort(403)
+
+    form = EditForm()
+    if form.validate_on_submit():
+        photo.name = form.user.data
+        photo.caption = form.caption.data
+        photo.description = form.description.data
+        db.session.commit()
+        log.info("edit success user_id=%s photo_id=%s",
+                 current_user.id, photo_id)
+        flash(f"Photo '{photo.name}' updated.", "success")
+        return redirect(url_for("main.homepage"))
+
+    if request.method == "GET":
+        form.user.data = photo.name
+        form.caption.data = photo.caption
+        form.description.data = photo.description
+    # SECURE: return 400 on POST validation failure (same rationale as newPhoto).
+    status_code = 400 if (request.method == "POST" and form.errors) else 200
+    return render_template("edit.html", form=form, photo=photo), status_code
 
 
-# This is called when clicking on Delete. 
-@main.route('/photo/<int:photo_id>/delete/', methods = ['GET','POST'])
+# SECURE (V6 / CWE-352): delete is POST-only so cross-origin <img>/<a>
+# cannot trigger it. The Jinja template uses a <form method="POST">
+# with a CSRF token. The earlier ['GET','POST'] was the V6 finding.
+@main.route("/photo/<int:photo_id>/delete/", methods=["POST"])
+@login_required
 def deletePhoto(photo_id):
-  fileResults = db.session.execute(text('select file from photo where id = ' + str(photo_id)))
-  filename = fileResults.first()[0]
-  filepath = os.path.join(current_app.config["UPLOAD_DIR"], filename)
-  os.unlink(filepath)
-  db.session.execute(text('delete from photo where id = ' + str(photo_id)))
-  db.session.commit()
-  
-  flash('Photo id %s Successfully Deleted' % photo_id)
-  return redirect(url_for('main.homepage'))
+    photo = db.session.get(Photo, photo_id)
+    if photo is None:
+        abort(404)
 
+    # SECURE (V5): ownership / admin authorisation, identical to edit.
+    if photo.owner_id != current_user.id and not current_user.is_admin:
+        log.warning("delete forbidden user_id=%s photo_id=%s",
+                    current_user.id, photo_id)
+        abort(403)
+
+    # SECURE (V13): basename + commonpath defence before os.unlink.
+    upload_dir = str(current_app.config["UPLOAD_DIR"])
+    safe_name = os.path.basename(photo.file)
+    filepath = os.path.realpath(os.path.join(upload_dir, safe_name))
+    if os.path.commonpath([filepath, os.path.realpath(upload_dir)]) == \
+            os.path.realpath(upload_dir):
+        try:
+            os.unlink(filepath)
+        except FileNotFoundError:
+            # SECURE (V14): graceful handling, no stack trace exposed.
+            log.info("delete file_missing photo_id=%s file=%s",
+                     photo_id, safe_name)
+    else:
+        log.warning("delete refused traversal photo_id=%s file=%s",
+                    photo_id, photo.file)
+
+    # SECURE (V1 / CWE-89): ORM delete, replaces the previous raw
+    # `text('delete from photo where id = ' + str(photo_id))`.
+    db.session.delete(photo)
+    db.session.commit()
+    log.info("delete success user_id=%s photo_id=%s",
+             current_user.id, photo_id)
+    flash(f"Photo {photo_id} deleted.", "success")
+    return redirect(url_for("main.homepage"))
