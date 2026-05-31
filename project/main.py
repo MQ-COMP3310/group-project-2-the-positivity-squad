@@ -27,8 +27,8 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import asc, func
 
 from . import db, limiter
-from .models import Photo, Vote
-from .forms import UploadForm, EditForm, VoteForm
+from .models import Photo, Vote, Comment
+from .forms import UploadForm, EditForm, VoteForm, CommentForm
 
 # Pillow is imported lazily inside the handler so tests can run on a
 # Python with no Pillow installed (in that case the upload tests skip).
@@ -164,6 +164,7 @@ def vote_photo():
     # SECURE (CWE-209): generic error message avoids leaking any sensitive information
     flash("Your vote was recorded.", "success")
     return redirect(url_for("main.homepage"))
+
 
 
 @main.route("/uploads/<name>")
@@ -328,4 +329,96 @@ def deletePhoto(photo_id):
     log.info("delete success user_id=%s photo_id=%s",
              current_user.id, photo_id)
     flash(f"Photo {photo_id} deleted.", "success")
+    return redirect(url_for("main.homepage"))
+
+###############################################################################
+# Feature 2 — Photo Comments
+###############################################################################
+
+@main.route("/comment/add/<int:photo_id>", methods=["POST"])
+# SECURE (R3.1 / CWE-306): only authenticated users may comment.
+# Anonymous requests are redirected to /login by the LoginManager.
+@login_required
+# SECURE (R3.8 / CWE-770 / A07:2025): rate limit caps comment creation
+# at 10 per minute per user to mitigate spam and automated abuse.
+@limiter.limit("10/minute")
+def addComment(photo_id):
+    """Create a comment attached to a specific photo.
+
+    Implements R3.1, R3.2, R3.3, R3.4, R3.7, R3.8 from Task 8.2.
+    """
+    # SECURE (R3.2): validate the target photo exists before accepting
+    # the comment. db.session.get is parameterised (ORM, not raw SQL),
+    # closing V1 / CWE-89.
+    photo = db.session.get(Photo, photo_id)
+    if photo is None:
+        # SECURE (CWE-209): generic error, no stack trace.
+        log.warning("comment add rejected photo_missing user_id=%s photo_id=%s",
+                    current_user.id, photo_id)
+        abort(404)
+
+    # SECURE (R3.3, R3.4 / V7 / CWE-352 / CWE-20): CSRF token AND
+    # length/non-blank validation enforced via Flask-WTF. Anything that
+    # fails validation produces a 400 with a generic flash.
+    form = CommentForm()
+    if not form.validate_on_submit():
+        log.warning("comment add rejected invalid_form user_id=%s photo_id=%s",
+                    current_user.id, photo_id)
+        flash("Comment could not be posted. Please try again.", "error")
+        return redirect(url_for("main.homepage"))
+
+    # SECURE (R3.2): bind the comment to BOTH the photo and the
+    # authenticated user via foreign keys recorded at the DB layer.
+    comment = Comment(
+        photo_id=photo.id,
+        user_id=current_user.id,
+        content=form.content.data,
+    )
+    db.session.add(comment)
+    db.session.commit()
+
+    # SECURE (R3.7 / V19 / CWE-778 / A09:2025): write an audit log line
+    # naming actor, action, comment id, and photo id.
+    log.info("comment created user_id=%s comment_id=%s photo_id=%s",
+             current_user.id, comment.id, photo.id)
+    flash("Comment posted.", "success")
+    return redirect(url_for("main.homepage"))
+
+
+# SECURE (V6 / CWE-352): delete is POST-only so cross-origin <img>/<a>
+# cannot trigger it. The Jinja template renders a <form method="POST">
+# button with a CSRF token.
+@main.route("/comment/<int:comment_id>/delete", methods=["POST"])
+# SECURE (R3.1 / R3.6 / CWE-306): only authenticated users can hit
+# delete; the ownership / admin check below restricts WHICH comment
+# they may delete.
+@login_required
+# SECURE (R3.8 / CWE-770): rate limit applies to comment deletion too,
+# to defeat mass-deletion abuse from a compromised account.
+@limiter.limit("10/minute")
+def deleteComment(comment_id):
+    """Delete a comment by id.
+
+    Implements R3.6, R3.7 from Task 8.2. Owner or administrator only.
+    """
+    comment = db.session.get(Comment, comment_id)
+    if comment is None:
+        # SECURE (V14 / CWE-209): 404 if missing, no stack trace.
+        abort(404)
+
+    # SECURE (R3.6 / A01:2025): ownership / admin check. Anyone who
+    # is neither the author nor an admin receives 403.
+    if comment.user_id != current_user.id and not current_user.is_admin:
+        log.warning("comment delete forbidden user_id=%s comment_id=%s",
+                    current_user.id, comment_id)
+        abort(403)
+
+    photo_id = comment.photo_id
+    db.session.delete(comment)
+    db.session.commit()
+
+    # SECURE (R3.7 / V19 / CWE-778 / A09:2025): structured audit log.
+    log.info("comment deleted user_id=%s comment_id=%s photo_id=%s",
+             current_user.id, comment_id, photo_id)
+    flash("Comment deleted.", "success")
     return redirect(url_for("main.homepage"))
