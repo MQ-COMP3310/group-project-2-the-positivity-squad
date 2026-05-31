@@ -48,6 +48,7 @@
                 <div class="image-description overflow-ellipsis" title="{{photo.description}}">
                     {{photo.description}}
                 </div>
+               
             </div>
 
             <div class="image-navigation-container">
@@ -84,6 +85,36 @@
                 {% endif %}
             </div>
         </div>
+         <h4>Comments</h4>
+
+{% for comment in photo.comments %}
+    <p>
+        <strong>{{ comment.author.username }}</strong>:
+        {{ comment.content }}
+    </p>
+{% endfor %}
+
+{% if current_user.is_authenticated %}
+<form method="POST"
+      action="{{ url_for('main.addComment', photo_id=photo.id) }}">
+
+    <input type="hidden"
+           name="csrf_token"
+           value="{{ csrf_token() }}">
+
+    <textarea name="content"
+              rows="2"
+              cols="30"
+              placeholder="Write a comment..."
+              required></textarea>
+
+    <br>
+
+    <button type="submit">
+        Post Comment
+    </button>
+</form>
+{% endif %}
     </div>
     {% endfor %}
 </div>

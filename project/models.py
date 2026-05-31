@@ -36,6 +36,14 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     photos = db.relationship("Photo", backref="owner", lazy="dynamic")
+    
+    # SECURE (R3.2): allows comments to be traced back to creators.
+    comments = db.relationship(
+    "Comment",
+    backref="author",
+    lazy="dynamic"
+)
+
 
     def set_password(self, password):
         # SECURE: werkzeug.security uses scrypt with a per-password random
@@ -45,6 +53,8 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         # Constant-time comparison via werkzeug.
         return check_password_hash(self.password_hash, password)
+    
+    
 
 
 class Photo(db.Model):
@@ -57,6 +67,45 @@ class Photo(db.Model):
     # main.py compares photo.owner_id with current_user.id, with an
     # admin bypass for users where is_admin == True.
     owner_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    
+     # SECURE (R3.2): comments belong to photos and are removed when
+     # the photo is deleted.
+    comments = db.relationship(
+    "Comment",
+    backref="photo",
+    lazy="dynamic",
+    cascade="all, delete-orphan"
+)
+
+class Comment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+
+    # SECURE (R3.2): every comment must belong to an existing photo.
+    photo_id = db.Column(
+        db.Integer,
+        db.ForeignKey("photo.id"),
+        nullable=False
+    )
+
+    # SECURE (R3.2): comments are associated with the authenticated
+    # user that created them.
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=False
+    )
+
+    # SECURE (R3.4 / CWE-20): comment length is restricted.
+    content = db.Column(
+        db.String(500),
+        nullable=False
+    )
+
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )    
 
     @property
     def serialize(self):

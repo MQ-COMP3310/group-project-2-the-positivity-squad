@@ -27,8 +27,8 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import asc
 
 from . import db
-from .models import Photo
-from .forms import UploadForm, EditForm
+from .models import Photo, Comment
+from .forms import UploadForm, EditForm, CommentForm
 
 # Pillow is imported lazily inside the handler so tests can run on a
 # Python with no Pillow installed (in that case the upload tests skip).
@@ -53,6 +53,7 @@ def homepage():
     """
     photos = db.session.query(Photo).order_by(asc(Photo.file))
     return render_template("index.html", photos=photos)
+
 
 
 @main.route("/uploads/<name>")
@@ -217,4 +218,32 @@ def deletePhoto(photo_id):
     log.info("delete success user_id=%s photo_id=%s",
              current_user.id, photo_id)
     flash(f"Photo {photo_id} deleted.", "success")
+    return redirect(url_for("main.homepage"))
+
+@main.route("/comment/add/<int:photo_id>", methods=["POST"])
+@login_required
+def addComment(photo_id):
+    """Add a comment to a photo."""
+
+    photo = db.session.get(Photo, photo_id)
+
+    if photo is None:
+        abort(404)
+
+    form = CommentForm()
+
+    # SECURE (R3.4): server-side validation.
+    if form.validate_on_submit():
+
+        comment = Comment(
+            photo_id=photo.id,
+            user_id=current_user.id,
+            content=form.content.data
+        )
+
+        db.session.add(comment)
+        db.session.commit()
+
+        flash("Comment added.", "success")
+
     return redirect(url_for("main.homepage"))

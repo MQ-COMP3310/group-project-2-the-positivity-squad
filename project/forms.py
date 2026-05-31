@@ -94,3 +94,15 @@ class EditForm(FlaskForm):
         DataRequired(), Length(max=600),
     ])
     submit = SubmitField("Save")
+
+class CommentForm(FlaskForm):
+    """Photo comment submission form."""
+
+    # SECURE (R3.4 / CWE-20): validates comment input and limits
+    # comment length.
+    content = TextAreaField("Comment", validators=[
+        DataRequired(),
+        Length(min=1, max=500),
+    ])
+
+    submit = SubmitField("Post Comment") 
