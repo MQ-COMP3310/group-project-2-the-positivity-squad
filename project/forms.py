@@ -10,8 +10,8 @@ Source: https://flask-wtf.readthedocs.io/en/1.2.x/
 """
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, FileRequired, FileAllowed
-from wtforms import StringField, PasswordField, TextAreaField, SubmitField
-from wtforms.validators import DataRequired, Length, Email, EqualTo, Regexp
+from wtforms import StringField, PasswordField, TextAreaField, SubmitField, HiddenField
+from wtforms.validators import DataRequired, Length, Email, EqualTo, Regexp, AnyOf
 
 
 class SignupForm(FlaskForm):
@@ -94,3 +94,10 @@ class EditForm(FlaskForm):
         DataRequired(), Length(max=600),
     ])
     submit = SubmitField("Save")
+
+
+class VoteForm(FlaskForm):
+    # SECURE (R2.4): Hidden field is required and validated server-side.
+    photo_id = HiddenField("Photo ID", validators=[DataRequired()])
+    # SECURE (R2.4): Only allow explicit vote values (1 or -1).
+    value = HiddenField("Vote Value", validators=[DataRequired(), AnyOf(["1", "-1"])])

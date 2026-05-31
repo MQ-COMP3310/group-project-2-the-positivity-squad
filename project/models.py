@@ -36,6 +36,7 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     photos = db.relationship("Photo", backref="owner", lazy="dynamic")
+    votes = db.relationship("Vote", backref="user", lazy="dynamic", cascade="all, delete-orphan")
 
     def set_password(self, password):
         # SECURE: werkzeug.security uses scrypt with a per-password random
@@ -57,6 +58,7 @@ class Photo(db.Model):
     # main.py compares photo.owner_id with current_user.id, with an
     # admin bypass for users where is_admin == True.
     owner_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    votes = db.relationship("Vote", backref="photo", lazy="dynamic", cascade="all, delete-orphan")
 
     @property
     def serialize(self):
@@ -68,3 +70,16 @@ class Photo(db.Model):
             "desc": self.description,
             "owner_id": self.owner_id,
         }
+
+
+class Vote(db.Model):
+    """A single authenticated user's vote on a photo."""
+
+    # SECURE (R2.1, R2.2, R2.8): Each vote is associated with an authenticated user, making votes traceable.
+    id = db.Column(db.Integer, primary_key=True)
+    photo_id = db.Column(db.Integer, db.ForeignKey("photo.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    value = db.Column(db.Integer, nullable=False)  # 1 for upvote, -1 for downvote
+    __table_args__ = (
+        db.UniqueConstraint("photo_id", "user_id", name="unique_vote_per_user_per_photo"),
+    )

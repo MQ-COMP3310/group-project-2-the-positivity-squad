@@ -24,11 +24,11 @@ from flask import (
 )
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
-from sqlalchemy import asc
+from sqlalchemy import asc, func
 
-from . import db
-from .models import Photo
-from .forms import UploadForm, EditForm
+from . import db, limiter
+from .models import Photo, Vote
+from .forms import UploadForm, EditForm, VoteForm
 
 # Pillow is imported lazily inside the handler so tests can run on a
 # Python with no Pillow installed (in that case the upload tests skip).
@@ -42,6 +42,40 @@ main = Blueprint("main", __name__)
 log = logging.getLogger("main")
 
 
+def parse_vote_payload(form):
+    """Parse and type-cast vote payload fields from a validated form."""
+    try:
+        return int(form.photo_id.data), int(form.value.data)
+    except (TypeError, ValueError):
+        return None, None
+
+
+def get_photo(photo_id):
+    """Fetch target photo by primary key or return None."""
+    return db.session.get(Photo, photo_id)
+
+
+def upsert_vote(photo_id, user_id, value):
+    """Create a new vote or update an existing vote for user+photo."""
+    existing = db.session.query(Vote).filter_by(
+        photo_id=photo_id,
+        user_id=user_id,
+    ).first()
+
+    if existing is None:
+        db.session.add(
+            Vote(
+                photo_id=photo_id,
+                user_id=user_id,
+                value=value,
+            )
+        )
+        return "created"
+
+    existing.value = value
+    return "updated"
+
+
 @main.route("/")
 def homepage():
     """Public photo gallery.
@@ -51,8 +85,85 @@ def homepage():
     authorisation check on every edit / delete request — the client is
     never trusted.
     """
-    photos = db.session.query(Photo).order_by(asc(Photo.file))
-    return render_template("index.html", photos=photos)
+    photos = db.session.query(Photo).order_by(asc(Photo.file)).all()
+
+    # SECURE (R2.2): Aggregate vote counts server-side so totals are
+    # generated from trusted DB records, not client input.
+    vote_counts = {
+        photo.id: {"up": 0, "down": 0, "total": 0}
+        for photo in photos
+    }
+    for photo_id, vote_value, count in (
+        db.session.query(Vote.photo_id, Vote.value, func.count(Vote.id))
+        .group_by(Vote.photo_id, Vote.value)
+        .all()
+    ):
+        if photo_id not in vote_counts:
+            continue
+        if vote_value == 1:
+            vote_counts[photo_id]["up"] = count
+        elif vote_value == -1:
+            vote_counts[photo_id]["down"] = count
+
+    for counts in vote_counts.values():
+        counts["total"] = counts["up"] - counts["down"]
+
+    user_votes = {}
+    if current_user.is_authenticated:
+        # SECURE (R2.1, R2.8): Fetch the logged-in user's prior votes so
+        # each vote remains attributable to an authenticated identity.
+        for vote in db.session.query(Vote).filter_by(user_id=current_user.id).all():
+            user_votes[vote.photo_id] = vote.value
+
+    vote_form = VoteForm()
+    return render_template(
+        "index.html",
+        photos=photos,
+        vote_counts=vote_counts,
+        user_votes=user_votes,
+        vote_form=vote_form,
+    )
+
+
+@main.route("/vote", methods=["POST"])
+# SECURE (R2.1): Only authenticated users can vote.
+@login_required
+# SECURE (R2.6, CWE-770): Rate limiting helps prevent DoS and automated vote abuse.
+# SECURE: rate limit reduces brute-force / bot voting.
+@limiter.limit("10/minute")
+def vote_photo():
+    """Create or update the current user's vote for a specific photo."""
+    form = VoteForm()
+    # SECURE (R2.3, R2.4, V7, CWE-352): CSRF token and server-side form validation
+    # block forged or malformed vote submissions.
+    # SECURE: Flask-WTF validates CSRF + allowed vote values.
+    if not form.validate_on_submit():
+        # SECURE (CWE-209): generic error message avoids leaking any sensitive information
+        flash("Invalid vote request.", "error")
+        return redirect(url_for("main.homepage"))
+
+    photo_id, value = parse_vote_payload(form)
+    if photo_id is None or value is None:
+        # SECURE (CWE-209): generic error message avoids leaking any sensitive information
+        flash("Invalid vote values.", "error")
+        return redirect(url_for("main.homepage"))
+
+    photo = get_photo(photo_id)
+    if photo is None:
+        # SECURE (CWE-209): generic error message avoids leaking internals.        
+        flash("Photo not found.", "error")
+        return redirect(url_for("main.homepage"))
+
+    # SECURE (R2.2): One vote per user/photo: create if missing,
+    # otherwise update the existing row rather than duplicating votes.
+    action = upsert_vote(photo_id=photo_id, user_id=current_user.id, value=value)
+
+    db.session.commit()
+    # SECURE (R2.7, V19, CWE-778): Voting actions are logged for auditability.
+    log.info("vote %s user_id=%s photo_id=%s value=%s", action, current_user.id, photo_id, value)
+    # SECURE (CWE-209): generic error message avoids leaking any sensitive information
+    flash("Your vote was recorded.", "success")
+    return redirect(url_for("main.homepage"))
 
 
 @main.route("/uploads/<name>")
