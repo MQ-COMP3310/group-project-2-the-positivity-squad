@@ -10,8 +10,12 @@ Source: https://flask-wtf.readthedocs.io/en/1.2.x/
 """
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, FileRequired, FileAllowed
-from wtforms import StringField, PasswordField, TextAreaField, SubmitField, HiddenField
-from wtforms.validators import DataRequired, Length, Email, EqualTo, Regexp, AnyOf
+from wtforms import (
+    StringField, PasswordField, TextAreaField, SubmitField, HiddenField,
+)
+from wtforms.validators import (
+    DataRequired, Length, Email, EqualTo, Regexp, AnyOf,
+)
 
 
 class SignupForm(FlaskForm):
@@ -20,9 +24,7 @@ class SignupForm(FlaskForm):
     # SECURE (V16): server-side validation cannot be bypassed by editing
     # the HTML form. Email validator requires the `email-validator` pkg.
     email = StringField("Email", validators=[
-        DataRequired(),
-        Email(),
-        Length(max=120),
+        DataRequired(), Email(), Length(max=120),
     ])
     username = StringField("Username", validators=[
         DataRequired(),
@@ -51,9 +53,7 @@ class SignupForm(FlaskForm):
 
 class LoginForm(FlaskForm):
     email = StringField("Email", validators=[
-        DataRequired(),
-        Email(),
-        Length(max=120),
+        DataRequired(), Email(), Length(max=120),
     ])
     # No length validator here — we deliberately accept any password so
     # the timing / response for "no such user" matches "wrong password"
@@ -97,7 +97,27 @@ class EditForm(FlaskForm):
 
 
 class VoteForm(FlaskForm):
+    """Vote submission form (Feature 1)."""
+
     # SECURE (R2.4): Hidden field is required and validated server-side.
     photo_id = HiddenField("Photo ID", validators=[DataRequired()])
-    # SECURE (R2.4): Only allow explicit vote values (1 or -1).
-    value = HiddenField("Vote Value", validators=[DataRequired(), AnyOf(["1", "-1"])])
+    # SECURE (R2.4): Only allow explicit vote values (1 or -1). AnyOf
+    # rejects anything else (e.g. "100" or "0") at the form layer before
+    # the handler ever sees it.
+    value = HiddenField("Vote Value", validators=[
+        DataRequired(), AnyOf(["1", "-1"]),
+    ])
+
+
+class CommentForm(FlaskForm):
+    """Photo comment submission form (Feature 2)."""
+
+    # SECURE (R3.4 / CWE-20): validates comment input is non-blank and
+    # capped at 500 characters. The same length is enforced again at the
+    # database column level in models.Comment.content.
+    content = TextAreaField("Comment", validators=[
+        DataRequired(),
+        Length(min=1, max=500,
+               message="Comment must be 1 to 500 characters."),
+    ])
+    submit = SubmitField("Post Comment")

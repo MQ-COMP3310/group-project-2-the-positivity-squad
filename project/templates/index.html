@@ -48,6 +48,7 @@
                 <div class="image-description overflow-ellipsis" title="{{photo.description}}">
                     {{photo.description}}
                 </div>
+               
             </div>
 
             <div class="image-navigation-container">
@@ -111,6 +112,60 @@
                     </form>
                 {% endif %}
             </div>
+        </div>
+        {# SECURE (R3.5 / CWE-79): All comment content is rendered with
+           Jinja's default autoescape on, so any <script> bytes in
+           comment.content or comment.author.username are emitted as
+           HTML entities instead of executable markup. #}
+        <div class="comments-block" style="padding:0.4em;border-top:0.1em solid #ccc;">
+            <h4 style="margin:0.2em 0;font-size:0.9em;">Comments</h4>
+
+            {% for comment in photo.comments %}
+                <p style="margin:0.2em 0;font-size:0.85em;">
+                    <strong>{{ comment.author.username }}</strong>:
+                    {{ comment.content }}
+
+                    {# SECURE (R3.6 / A01:2025): Delete button only
+                       rendered for the comment author or an admin.
+                       Backend re-checks on every request. #}
+                    {% if current_user.is_authenticated and (current_user.id == comment.user_id or current_user.is_admin) %}
+                        <form method="POST"
+                              action="{{ url_for('main.deleteComment', comment_id=comment.id) }}"
+                              style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit"
+                                    style="background:none;border:none;color:#c33;cursor:pointer;font-size:0.85em;"
+                                    title="Delete this comment">
+                                [delete]
+                            </button>
+                        </form>
+                    {% endif %}
+                </p>
+            {% else %}
+                <p style="margin:0.2em 0;font-size:0.85em;color:#666;"><em>No comments yet.</em></p>
+            {% endfor %}
+
+            {% if current_user.is_authenticated %}
+                {# SECURE (R3.3 / CWE-352): CSRF token required on every
+                   comment POST. Flask-WTF validates it server-side. #}
+                <form method="POST"
+                      action="{{ url_for('main.addComment', photo_id=photo.id) }}"
+                      style="margin-top:0.4em;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {# SECURE (R3.4): maxlength is a UX hint only; the
+                       server enforces 1-500 via CommentForm validators. #}
+                    <textarea name="content"
+                              rows="2"
+                              maxlength="500"
+                              placeholder="Write a comment..."
+                              style="width:100%;font-size:0.85em;"
+                              required></textarea>
+                    <button type="submit"
+                            style="margin-top:0.2em;font-size:0.85em;">
+                        Post Comment
+                    </button>
+                </form>
+            {% endif %}
         </div>
     </div>
     {% endfor %}
