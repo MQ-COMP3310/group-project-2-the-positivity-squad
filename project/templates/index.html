@@ -33,84 +33,85 @@
 <div id="images" class="images-container" data-pagetype="{{ pagetype }}">
     {% for photo in photos %}
     <div class="image-box" data-id="{{photo.id}}">
-        <img class="image" src="{{ url_for('main.display_file', name=photo.file) }}" alt="image">
-        <div class="image-overlay-container">
-            <div class="image-info-container">
-                <div class="image-meta">
-                    <div class="image-owner overflow-ellipsis" title="{{photo.name}}">
-                        {{photo.name}}
+        <div class="image-frame">
+            <img class="image" src="{{ url_for('main.display_file', name=photo.file) }}" alt="image">
+            <div class="image-overlay-container">
+                <div class="image-info-container">
+                    <div class="image-meta">
+                        <div class="image-owner overflow-ellipsis" title="{{photo.name}}">
+                            {{photo.name}}
+                        </div>
+                        <div class="image-caption overflow-ellipsis" title="{{photo.caption}}">
+                            {{photo.caption}}
+                        </div>
                     </div>
-                    <div class="image-caption overflow-ellipsis" title="{{photo.caption}}">
-                        {{photo.caption}}
+
+                    <div class="image-description overflow-ellipsis" title="{{photo.description}}">
+                        {{photo.description}}
                     </div>
                 </div>
 
-                <div class="image-description overflow-ellipsis" title="{{photo.description}}">
-                    {{photo.description}}
-                </div>
-               
-            </div>
+                <div class="image-navigation-container">
+                    {% if current_user.is_authenticated %}
+                        {# SECURE (R2.3, CWE-352): Include CSRF token so only
+                           valid same-session vote submissions are accepted. #}
+                        <form method="POST" action="{{ url_for('main.vote_photo') }}" style="display:inline-flex;align-items:center;gap:6px;">
+                            {{ vote_form.csrf_token }}
+                            <input type="hidden" name="photo_id" value="{{ photo.id }}">
+                            <button type="submit"
+                                    name="value"
+                                    value="1"
+                                    title="Upvote"
+                                    class="vote-button {% if user_votes.get(photo.id) == 1 %}vote-selected{% else %}vote-dim{% endif %}"
+                                    style="border:none;background:none;cursor:pointer;font-size:1rem;">
+                                ▲
+                            </button>
+                            <span class="vote-count" title="Score">
+                                {{ vote_counts[photo.id]['total'] }}
+                            </span>
+                            <button type="submit"
+                                    name="value"
+                                    value="-1"
+                                    title="Downvote"
+                                    class="vote-button {% if user_votes.get(photo.id) == -1 %}vote-selected{% else %}vote-dim{% endif %}"
+                                    style="border:none;background:none;cursor:pointer;font-size:1rem;">
+                                ▼
+                            </button>
+                        </form>
+                    {% endif %}
 
-            <div class="image-navigation-container">
-                {% if current_user.is_authenticated %}
-                    {# SECURE (R2.3, CWE-352): Include CSRF token so only
-                       valid same-session vote submissions are accepted. #}
-                    <form method="POST" action="{{ url_for('main.vote_photo') }}" style="display:inline-flex;align-items:center;gap:6px;">
-                        {{ vote_form.csrf_token }}
-                        <input type="hidden" name="photo_id" value="{{ photo.id }}">
-                        <button type="submit"
-                                name="value"
-                                value="1"
-                                title="Upvote"
-                                class="vote-button {% if user_votes.get(photo.id) == 1 %}vote-selected{% else %}vote-dim{% endif %}"
-                                style="border:none;background:none;cursor:pointer;font-size:1rem;">
-                            ▲
-                        </button>
-                        <span class="vote-count" title="Score">
-                            {{ vote_counts[photo.id]['total'] }}
-                        </span>
-                        <button type="submit"
-                                name="value"
-                                value="-1"
-                                title="Downvote"
-                                class="vote-button {% if user_votes.get(photo.id) == -1 %}vote-selected{% else %}vote-dim{% endif %}"
-                                style="border:none;background:none;cursor:pointer;font-size:1rem;">
-                            ▼
-                        </button>
-                    </form>
-                {% endif %}
-
-                <a href="{{ url_for('main.display_file', name=photo.file) }}"
-                   class="download" title="Download this photo" download>
-                    <div class="icon-container highlight blue">
-                        <img src="{{ url_for('static', filename='icons/download.png') }}" alt="download">
-                    </div>
-                </a>
-
-                {# SECURE (V5): edit / delete buttons only for owner or admin. #}
-                {% if current_user.is_authenticated and (current_user.id == photo.owner_id or current_user.is_admin) %}
-                    <a href="{{ url_for('main.editPhoto', photo_id=photo.id) }}"
-                       title="Edit this photo">
-                        <div class="icon-container highlight green">
-                            <img src="{{ url_for('static', filename='icons/edit.png') }}" alt="edit">
+                    <a href="{{ url_for('main.display_file', name=photo.file) }}"
+                       class="download" title="Download this photo" download>
+                        <div class="icon-container highlight blue">
+                            <img src="{{ url_for('static', filename='icons/download.png') }}" alt="download">
                         </div>
                     </a>
 
-                    {# SECURE (V6 / CWE-352): delete is POST + CSRF. #}
-                    <form method="POST"
-                          action="{{ url_for('main.deletePhoto', photo_id=photo.id) }}"
-                          style="display:inline;">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit"
-                                style="background:none;border:none;padding:0;cursor:pointer;"
-                                title="Delete this photo">
-                            <div class="icon-container highlight red delete">
-                                <img src="{{ url_for('static', filename='icons/delete.png') }}"
-                                     title="Delete this photo" alt="delete">
+                    {# SECURE (V5): edit / delete buttons only for owner or admin. #}
+                    {% if current_user.is_authenticated and (current_user.id == photo.owner_id or current_user.is_admin) %}
+                        <a href="{{ url_for('main.editPhoto', photo_id=photo.id) }}"
+                           title="Edit this photo">
+                            <div class="icon-container highlight green">
+                                <img src="{{ url_for('static', filename='icons/edit.png') }}" alt="edit">
                             </div>
-                        </button>
-                    </form>
-                {% endif %}
+                        </a>
+
+                        {# SECURE (V6 / CWE-352): delete is POST + CSRF. #}
+                        <form method="POST"
+                              action="{{ url_for('main.deletePhoto', photo_id=photo.id) }}"
+                              style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit"
+                                    style="background:none;border:none;padding:0;cursor:pointer;"
+                                    title="Delete this photo">
+                                <div class="icon-container highlight red delete">
+                                    <img src="{{ url_for('static', filename='icons/delete.png') }}"
+                                         title="Delete this photo" alt="delete">
+                                </div>
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
             </div>
         </div>
         {# SECURE (R3.5 / CWE-79): All comment content is rendered with
