@@ -1,62 +1,162 @@
-# Flask photo gallery
+# Flask Photo Gallery
+**Main branch for marking: `main`**
 
-This codebase implements a basic photo web application using python and the flask framework. 
+A photo sharing web application built with Python and HTML/CSS. Alongside security analysis, the team developed the following features:
+1. Authentication & Authorisation
+2. Upvote/Downvote System
+3. Photo Comment System
 
-# Setup
+---
 
-To setup the basic website you will need to have the following installed:
+## Requirements
 
-- python3
+- Python 3.10.13 to 3.13.5 (Only have been tested and developed in these versions)
 - pip
 - sqlite3
 
-Pip is the package manager for Python.  You can install the remaining packages required for this task using pip. You will need to run the following:
-To start you should create and activate a virtual environment:
+---
 
- $ python -m venv env        # use `virtualenv env` for Python2, use `python3 ...` for Python3 on Linux & macOS   
- $ source env/bin/activate   # use `env\Scripts\activate` on Windows   
- $ pip install -r requirements.txt   
+## Setup
 
-This web application has been tested on Python 3.10.13. If you have problems running this app, it is recommended that you downgrade to Python 3.10.13. Instructions on how to do this (on Mac with M1 chip) are here: https://stackoverflow.com/questions/62898911/how-to-downgrade-python-version-from-3-8-to-3-7-mac (replacing 3.7 with 3.10.13).
+### 1. Create and activate a virtual environment
 
-You will also need sqlite installed for the database backend.
+**macOS / Linux:**
+```bash
+python3 -m venv env
+source env/bin/activate
+```
 
-# Initialising the database
+**Windows:**
+```powershell
+python -m venv env
+env\Scripts\activate
+```
 
-You should first initialise the database as follows:
-- python initialise_db.py
+### 2. Install dependencies
 
-This should create an sqlite database under the instance directory. You can view the contents of the database using the sqlite command line interface as follows:
+```bash
+pip install -r requirements.txt
+```
 
-sqlite3 instance/photos.db   
-> .schema    
-CREATE TABLE photo (   
-	id INTEGER NOT NULL,    
-	name VARCHAR(50) NOT NULL,   
-	caption VARCHAR(250) NOT NULL,   
-	file VARCHAR(250) NOT NULL,   
-	description VARCHAR(600),   
-	PRIMARY KEY (id)  
-);   
+Dependencies include: Flask, Flask-Login, Flask-WTF, Flask-Limiter, Flask-Talisman, SQLAlchemy, Werkzeug, Pillow, pytest, and email-validator.
 
-> select * from photo;  
-1|William Warby|Gentoo penguin|william-warby-_A_vtMMRLWM.jpg|A penguin with an orange beak standing next to a rock.   
-2|Javier Patino Loira|Common side-blotched lizard|javier-patino-loira-nortqDjv7ak.jpg|A close up of a lizard on a rock.   
-3|Jordie Rubies|Griffin vulture flying|jordi-rubies-2wNkdL2oIyU.jpg|A large bird flying through a blue sky.   
-4|Jakub Neskora|Jaguar|jakub-neskora-jloJvr74Fcc.jpg|A close up of a leopard near a rock.   
-5|William Warby|Japanese macaque|william-warby-ndWikw_TPfc.jpg|A monkey sitting on top of a wooden post.   
-6|Ahmed Ali|Berlin|ahmed-ali-Zl7bVVMEfg.jpg|An exciting part of Berlin. This place covers so many beautiful attractions in the city. From that spot you are already on the famous Oberbaumbrücke, you can see Molecule Man, and right behind me, you can see Berlin's beautiful skyline with the Fernsehturm right in the middle of it with the reflections of the spree.   
-7|Hanvin Cheong|Nakano|hanvin-cheong-9rBj8QYOL1Q.jpg|A group of people walking across a street.   
-8|Ekaterina Bogdan|Bologna|ekaterina-bogdan-BKJWsGB5h1s.jpg|A bike parked next to a pole.   
-9|Damian Ochrymowicz|Nazare, Portugal|damian-ochrymowicz-GZQ7tKmEd9c.jpg|   
-10|Dima DallAcqua|Alcatraz Island|dima-dallacqua-U8TAGVPFJc4.jpg|A close up of a green plant.   
-11|Edgar|Oporto, Portugal|edgar-Q0g5Thf7Ank.jpg|A man sitting on a bench at a train station.   
+---
+
+## Database setup
+
+Initialise (or reset) the database and seed it with sample data:
+
+```bash
+python initialise_db.py
+```
+
+### Default and seeded accounts
+Feel free to use these sample accounts to tests the application.
+
+| Role  | Email                  | Password              |
+|-------|------------------------|-----------------------|
+| Admin | admin@example.com      | ChangeMeAdmin2026!    |
+| User  | alice@example.com      | ChangeMeAlice2026!    |
 
 
-# Run the website
+## Running the application
 
-You can run the website by typing:
+```bash
+python run.py
+```
 
-- python run.py
+Browse to [http://localhost:8000/](http://localhost:8000/).
 
-You can now browse to the url http://localhost:8000/ to view the website.
+
+## Running the tests
+
+**Authentication & Authorisation**
+```bash
+pip install pytest
+pytest -v tests/test_security.py
+```
+
+**Upvote/Downvote System**
+```bash
+pip install pytest
+pytest -v tests/test_vote.py
+```
+
+**Photo Comments System**
+```bash
+pip install pytest
+pytest -v tests/test_comments.py
+```
+
+---
+
+# Usage
+
+## As a guest (not logged in)
+Browse to http://localhost:8000/ to view all photos and their comments
+
+## As a regular user
+- Click Sign Up to create an account, or Login with an existing one
+- Click Upload to add a photo (JPEG, PNG, GIF + max 20 MB)
+- Click Edit or Delete on any of your own photos to manage them
+- Vote on any photo using the upvote (▲) or downvote (▼) buttons
+- Post a comment on any photo using the comment form below it
+- Delete any comment you authored using the delete button next to it
+- Click Logout when done
+
+## As an admin
+
+- Log in with the seeded admin account (admin@example.com / ChangeMeAdmin2026!)
+- Admins can edit or delete any user's photos
+- Admins can delete any comment
+
+---
+
+# Project structure overview
+You may reference the report to reference updated and changed lines/files (specifically Tables 15, 22, 23, 29 and 30) or previous commits.
+
+```
+.
+├── project/
+│   ├── __init__.py          # App factory: LoginManager, CSRF, Limiter, Talisman, cookies
+│   ├── auth.py              # /signup, /login, /logout blueprint
+│   ├── main.py              # Photo routes + Vote routes + Comment Routes
+│   ├── models.py            # User (scrypt) + Photo + Vote + Comment ORM models
+│   ├── forms.py             # Flask-WTF form classes with validators 
+│   └── templates/
+│       ├── index.html		# Photo + Vote + Comment UI
+│       ├── login.html		# Login UI
+│       ├── signup.html		# Sign Up UI
+│       ├── upload.html
+│       ├── edit.html
+│       └── partials/
+│           └── header.html
+├── tests/
+│   ├── __init__.py
+│   └── test_comments.py     # Test photo comment system
+│   └── test_security.py     # Test authentication & authorisation
+│   └── test_vote.py			# Test vote
+├── initialise_db.py
+├── run.py
+├── requirements.txt
+├── TASK 7.md
+├── ASSIGNMENT2_README.md
+```
+
+
+## References
+
+- [Flask-Login](https://flask-login.readthedocs.io/)
+- [Flask-WTF (CSRF)](https://flask-wtf.readthedocs.io/en/1.2.x/csrf/)
+- [Flask-Talisman](https://github.com/wntrblm/flask-talisman)
+- [Flask-Limiter](https://flask-limiter.readthedocs.io/)
+- [Werkzeug security utilities](https://werkzeug.palletsprojects.com/en/3.0.x/utils/)
+- [Pillow](https://pillow.readthedocs.io/)
+- [OWASP Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)
+- [OWASP Top 10:2025](https://owasp.org/Top10/2025/)
+
+---
+
+## AI assistance
+
+Implementation structure and security comments were drafted with assistance from Anthropic Claude. All suggestions were verified against the linked documentation and the project source code before being committed. No AI-generated code was used verbatim without verification.

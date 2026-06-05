@@ -41,41 +41,6 @@ except ImportError:
 main = Blueprint("main", __name__)
 log = logging.getLogger("main")
 
-
-def parse_vote_payload(form):
-    """Parse and type-cast vote payload fields from a validated form."""
-    try:
-        return int(form.photo_id.data), int(form.value.data)
-    except (TypeError, ValueError):
-        return None, None
-
-
-def get_photo(photo_id):
-    """Fetch target photo by primary key or return None."""
-    return db.session.get(Photo, photo_id)
-
-
-def upsert_vote(photo_id, user_id, value):
-    """Create a new vote or update an existing vote for user+photo."""
-    existing = db.session.query(Vote).filter_by(
-        photo_id=photo_id,
-        user_id=user_id,
-    ).first()
-
-    if existing is None:
-        db.session.add(
-            Vote(
-                photo_id=photo_id,
-                user_id=user_id,
-                value=value,
-            )
-        )
-        return "created"
-
-    existing.value = value
-    return "updated"
-
-
 @main.route("/")
 def homepage():
     """Public photo gallery.
@@ -124,6 +89,44 @@ def homepage():
         vote_form=vote_form,
     )
 
+###############################################################################
+# Feature 1 — Upvote/Downvote Validation
+###############################################################################
+
+# --- vote helper functions ---
+def parse_vote_payload(form):
+    """Parse and type-cast vote payload fields from a validated form."""
+    try:
+        return int(form.photo_id.data), int(form.value.data)
+    except (TypeError, ValueError):
+        return None, None
+
+
+def get_photo(photo_id):
+    """Fetch target photo by primary key or return None."""
+    return db.session.get(Photo, photo_id)
+
+
+def upsert_vote(photo_id, user_id, value):
+    """Create a new vote or update an existing vote for user+photo."""
+    existing = db.session.query(Vote).filter_by(
+        photo_id=photo_id,
+        user_id=user_id,
+    ).first()
+
+    if existing is None:
+        db.session.add(
+            Vote(
+                photo_id=photo_id,
+                user_id=user_id,
+                value=value,
+            )
+        )
+        return "created"
+
+    existing.value = value
+    return "updated"
+# --- vote helper functions ---
 
 @main.route("/vote", methods=["POST"])
 # SECURE (R2.1): Only authenticated users can vote.
@@ -165,6 +168,7 @@ def vote_photo():
     flash("Your vote was recorded.", "success")
     return redirect(url_for("main.homepage"))
 
+# --- end of vote function ---
 
 
 @main.route("/uploads/<name>")
