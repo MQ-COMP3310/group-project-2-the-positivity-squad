@@ -4,6 +4,6 @@ flask-sqlalchemy==3.1.1
 flask-wtf==1.2.1
 flask-limiter==3.8.0
 flask-talisman==1.1.0
-Pillow==12.2.0
+Pillow==12.3.0
 email-validator==2.2.0
 pytest==8.3.3
